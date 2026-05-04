@@ -1,8 +1,13 @@
+providers = ["node"]
+
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_20", "npm-9_x"]
+
+[phases.install]
+cmds = ["npm install"]
 
 [phases.build]
-cmds = ["npm install", "npm run build"]
+cmds = ["npm run build"]
 
 [start]
-cmd = "npm start"
+cmd = "node --loader tsx/esm server.ts"
