@@ -108,10 +108,10 @@ Material:\n${text.substring(0, 8000)}`);
     try {
       const { text } = req.body;
       if (!text) return res.status(400).json({ error: 'No text provided' });
-      const result = await groq(`Generate 10 flashcards based on this material. Return ONLY a JSON array with this exact format, no extra text:
-[{"term":"...","definition":"..."}]
+      const result = await groq(`Generate 5 multiple-choice questions based on this material. Return ONLY a valid JSON array, no markdown, no extra text, no explanation outside JSON:
+[{"question":"...","options":["A","B","C","D"],"correctAnswer":"A","explanation":"..."}]
 
-Material:\n${text.substring(0, 8000)}`);
+Material:\n${text.substring(0, 4000)}`);
       const parsed = JSON.parse(result.replace(/```json|```/g, '').trim());
       return res.json({ result: parsed });
     } catch (error: any) {
