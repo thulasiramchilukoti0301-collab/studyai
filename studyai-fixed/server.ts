@@ -112,11 +112,17 @@ Material:\n${text.substring(0, 8000)}`);
 [{"question":"...","options":["A","B","C","D"],"correctAnswer":"A","explanation":"..."}]
 
 Material:\n${text.substring(0, 4000)}`);
-      const parsed = JSON.parse(result.replace(/```json|```/g, '').trim());
-      return res.json({ result: parsed });
-    } catch (error: any) {
-      return res.status(500).json({ error: error.message });
-    }
+    try {
+  const cleaned = result.replace(/```json|```/g, '').trim();
+  const match = cleaned.match(/\[[\s\S]*\]/);
+  const parsed = JSON.parse(match ? match[0] : '[]');
+  return res.json({ result: parsed });
+} catch {
+  return res.json({ result: [] });
+}
+} catch (error: any) {
+return res.status(500).json({ error: error.message });
+}
   });
 
   app.post('/api/ai/chat', async (req, res) => {
