@@ -33,7 +33,18 @@ async function groq(prompt: string): Promise<string> {
     }),
   });
   const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message ?? 'Groq API error');
   return data.choices?.[0]?.message?.content ?? '';
+}
+
+function safeParseArray(text: string) {
+  try {
+    const match = text.match(/\[[\s\S]*\]/);
+    if (match) return JSON.parse(match[0]);
+    return [];
+  } catch {
+    return [];
+  }
 }
 
 async function startServer() {
@@ -82,7 +93,7 @@ async function startServer() {
     try {
       const { text } = req.body;
       if (!text) return res.status(400).json({ error: 'No text provided' });
-      const result = await groq(`Please summarize the following educational material. Format in professional markdown with clear headings.\n\nMaterial:\n${text.substring(0, 8000)}`);
+      const result = await groq(`Summarize this educational material in professional markdown with clear headings and bullet points.\n\nMaterial:\n${text.substring(0, 6000)}`);
       return res.json({ result });
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
@@ -93,12 +104,12 @@ async function startServer() {
     try {
       const { text } = req.body;
       if (!text) return res.status(400).json({ error: 'No text provided' });
-      const result = await groq(`Generate 5 multiple-choice questions based on this material. Return ONLY a JSON array with this exact format, no extra text:
-[{"question":"...","options":["A","B","C","D"],"correctAnswer":"A","explanation":"..."}]
+      const result = await groq(`Create 5 multiple choice questions from this text. 
+Output ONLY a JSON array. No explanation. No markdown. Just the raw JSON array like this:
+[{"question":"What is X?","options":["A","B","C","D"],"correctAnswer":"A","explanation":"Because..."}]
 
-Material:\n${text.substring(0, 8000)}`);
-      const parsed = JSON.parse(result.replace(/```json|```/g, '').trim());
-      return res.json({ result: parsed });
+Text: ${text.substring(0, 4000)}`);
+      return res.json({ result: safeParseArray(result) });
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
     }
@@ -108,28 +119,22 @@ Material:\n${text.substring(0, 8000)}`);
     try {
       const { text } = req.body;
       if (!text) return res.status(400).json({ error: 'No text provided' });
-      const result = await groq(`Generate 5 multiple-choice questions based on this material. Return ONLY a valid JSON array, no markdown, no extra text, no explanation outside JSON:
-[{"question":"...","options":["A","B","C","D"],"correctAnswer":"A","explanation":"..."}]
+      const result = await groq(`Create 8 flashcards from this text.
+Output ONLY a JSON array. No explanation. No markdown. Just the raw JSON array like this:
+[{"term":"Word","definition":"Meaning of the word"}]
 
-Material:\n${text.substring(0, 4000)}`);
-    try {
-  const cleaned = result.replace(/```json|```/g, '').trim();
-  const match = cleaned.match(/\[[\s\S]*\]/);
-  const parsed = JSON.parse(match ? match[0] : '[]');
-  return res.json({ result: parsed });
-} catch {
-  return res.json({ result: [] });
-}
-} catch (error: any) {
-return res.status(500).json({ error: error.message });
-}
+Text: ${text.substring(0, 4000)}`);
+      return res.json({ result: safeParseArray(result) });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
   });
 
   app.post('/api/ai/chat', async (req, res) => {
     try {
       const { question, context } = req.body;
       if (!question) return res.status(400).json({ error: 'No question provided' });
-      const result = await groq(`You are StudyAI, a helpful study companion. Use the following notes to answer the question. Be encouraging and educational.\n\nNotes:\n${(context || '').substring(0, 6000)}\n\nQuestion: ${question}`);
+      const result = await groq(`You are StudyAI, a helpful study assistant. Use the notes below to answer the question clearly and encouragingly.\n\nNotes:\n${(context || '').substring(0, 4000)}\n\nQuestion: ${question}`);
       return res.json({ result });
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
