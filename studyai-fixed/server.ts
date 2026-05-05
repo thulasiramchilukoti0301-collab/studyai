@@ -5,7 +5,6 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { GoogleGenAI, Type } from '@google/genai';
 
 dotenv.config();
 
@@ -15,8 +14,27 @@ const pdf = require('pdf-parse');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
-const MODEL = 'gemini-2.0-flash';
+const GROQ_API_KEY = process.env.GROQ_API_KEY as string;
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const MODEL = 'llama3-8b-8192';
+
+async function groq(prompt: string): Promise<string> {
+  const res = await fetch(GROQ_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2048,
+    }),
+  });
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content ?? '';
+}
 
 async function startServer() {
   const app = express();
@@ -64,11 +82,8 @@ async function startServer() {
     try {
       const { text } = req.body;
       if (!text) return res.status(400).json({ error: 'No text provided' });
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `Please summarize the following educational material. Format in professional markdown with clear headings.\n\nMaterial Content:\n${text.substring(0, 30000)}`,
-      });
-      return res.json({ result: response.text ?? 'No summary generated.' });
+      const result = await groq(`Please summarize the following educational material. Format in professional markdown with clear headings.\n\nMaterial:\n${text.substring(0, 8000)}`);
+      return res.json({ result });
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
     }
@@ -78,28 +93,12 @@ async function startServer() {
     try {
       const { text } = req.body;
       if (!text) return res.status(400).json({ error: 'No text provided' });
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `Generate 5 multiple-choice questions based on the following material. Each question must have exactly 4 options. Return ONLY valid JSON.\n\nMaterial Content:\n${text.substring(0, 30000)}`,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                question: { type: Type.STRING },
-                options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                correctAnswer: { type: Type.STRING },
-                explanation: { type: Type.STRING },
-              },
-              required: ['question', 'options', 'correctAnswer', 'explanation'],
-            },
-          },
-        },
-      });
-      const result = JSON.parse((response.text ?? '[]').replace(/```json|```/g, '').trim());
-      return res.json({ result });
+      const result = await groq(`Generate 5 multiple-choice questions based on this material. Return ONLY a JSON array with this exact format, no extra text:
+[{"question":"...","options":["A","B","C","D"],"correctAnswer":"A","explanation":"..."}]
+
+Material:\n${text.substring(0, 8000)}`);
+      const parsed = JSON.parse(result.replace(/```json|```/g, '').trim());
+      return res.json({ result: parsed });
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
     }
@@ -109,26 +108,12 @@ async function startServer() {
     try {
       const { text } = req.body;
       if (!text) return res.status(400).json({ error: 'No text provided' });
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `Generate 10 flashcards (term and definition). Return ONLY valid JSON.\n\nMaterial Content:\n${text.substring(0, 30000)}`,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                term: { type: Type.STRING },
-                definition: { type: Type.STRING },
-              },
-              required: ['term', 'definition'],
-            },
-          },
-        },
-      });
-      const result = JSON.parse((response.text ?? '[]').replace(/```json|```/g, '').trim());
-      return res.json({ result });
+      const result = await groq(`Generate 10 flashcards based on this material. Return ONLY a JSON array with this exact format, no extra text:
+[{"term":"...","definition":"..."}]
+
+Material:\n${text.substring(0, 8000)}`);
+      const parsed = JSON.parse(result.replace(/```json|```/g, '').trim());
+      return res.json({ result: parsed });
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
     }
@@ -136,17 +121,10 @@ async function startServer() {
 
   app.post('/api/ai/chat', async (req, res) => {
     try {
-      const { question, context, history } = req.body;
+      const { question, context } = req.body;
       if (!question) return res.status(400).json({ error: 'No question provided' });
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: [
-          ...(history || []),
-          { role: 'user', parts: [{ text: `Based on the following notes, answer: "${question}"\n\nNotes:\n${(context || '').substring(0, 20000)}` }] },
-        ],
-        config: { systemInstruction: 'You are StudyAI, a helpful study companion. Use provided notes as primary source. Keep answers encouraging and educational.' },
-      });
-      return res.json({ result: response.text ?? 'Could not generate a response.' });
+      const result = await groq(`You are StudyAI, a helpful study companion. Use the following notes to answer the question. Be encouraging and educational.\n\nNotes:\n${(context || '').substring(0, 6000)}\n\nQuestion: ${question}`);
+      return res.json({ result });
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
     }
